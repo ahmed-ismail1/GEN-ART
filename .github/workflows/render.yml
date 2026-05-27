@@ -1,0 +1,71 @@
+name: 🎬 Render Cinematic Intro
+
+on:
+  workflow_dispatch:
+    inputs:
+      resolution:
+        description: 'Output resolution'
+        required: true
+        default: '1080'
+        type: choice
+        options:
+          - '1080'
+          - '4K'
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+
+      - name: 🐍 Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: 📦 Install FFmpeg
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y ffmpeg
+
+      - name: 📦 Install Python deps
+        run: pip install -r requirements.txt
+
+      - name: 📁 Prepare assets
+        run: |
+          mkdir -p assets output src
+          # لو مفيش صورة، اعمل placeholder
+          if [ ! -f assets/storyboard.jpg ]; then
+            python -c "
+          from PIL import Image, ImageDraw
+          img = Image.new('RGB', (1920, 1080), color=(20, 20, 20))
+          d = ImageDraw.Draw(img)
+          d.text((860, 520), 'HOGAN VAPE', fill=(255, 200, 0))
+          img.save('assets/storyboard.jpg')
+          print('Placeholder image created.')
+            "
+          fi
+
+      - name: 🎬 Render video
+        run: python main.py
+        env:
+          CI: "true"
+          RESOLUTION: ${{ github.event.inputs.resolution }}
+
+      - name: 📤 Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: intro-${{ github.event.inputs.resolution }}-${{ github.run_number }}
+          path: output/
+          retention-days: 7
+
+      - name: ✅ Done
+        run: |
+          echo "================================"
+          echo "Render complete!"
+          ls -lh output/
+          echo "================================"
