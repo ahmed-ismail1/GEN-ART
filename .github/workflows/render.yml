@@ -14,7 +14,7 @@ on:
           - '4K'
 
       asset_source:
-        description: 'Asset Source — repo_assets OR external_urls'
+        description: 'Asset Source'
         required: true
         default: 'repo_assets'
         type: choice
@@ -29,7 +29,7 @@ on:
         type: string
 
       music_url:
-        description: 'Music URL (only if asset_source = external_urls — MP3/WAV/AAC)'
+        description: 'Music URL (only if asset_source = external_urls)'
         required: false
         default: ''
         type: string
@@ -48,7 +48,7 @@ on:
           - 'ultra'
 
       shake_intensity:
-        description: 'Shake Intensity (0=off, 1=light, 2=medium, 3=heavy)'
+        description: 'Shake Intensity (0=off 1=light 2=medium 3=heavy)'
         required: false
         default: '1'
         type: choice
@@ -97,6 +97,19 @@ jobs:
       - name: Create folders
         run: mkdir -p assets output src
 
+      - name: Create placeholder image script
+        run: |
+          cat > /tmp/make_placeholder.py << 'EOF'
+          from PIL import Image, ImageDraw
+          img = Image.new('RGB', (1920, 1080), color=(15, 15, 20))
+          d = ImageDraw.Draw(img)
+          d.rectangle([0, 0, 1920, 1080], fill=(15, 15, 20))
+          d.text((780, 500), 'HOGAN VAPE', fill=(255, 180, 0))
+          d.text((830, 560), 'CINEMATIC INTRO', fill=(180, 180, 180))
+          img.save('assets/storyboard.jpg', quality=95)
+          print('Placeholder created.')
+          EOF
+
       - name: Use repo assets
         if: ${{ github.event.inputs.asset_source == 'repo_assets' }}
         run: |
@@ -104,16 +117,7 @@ jobs:
             echo "Found assets/storyboard.jpg"
           else
             echo "No storyboard.jpg — creating placeholder"
-            python -c "
-from PIL import Image, ImageDraw
-img = Image.new('RGB', (1920, 1080), color=(15, 15, 20))
-d = ImageDraw.Draw(img)
-d.rectangle([0,0,1920,1080], fill=(15,15,20))
-d.text((780, 500), 'HOGAN VAPE', fill=(255, 180, 0))
-d.text((830, 560), 'CINEMATIC INTRO', fill=(180, 180, 180))
-img.save('assets/storyboard.jpg', quality=95)
-print('Placeholder created.')
-"
+            python /tmp/make_placeholder.py
           fi
           if [ -f assets/music.mp3 ] || [ -f assets/music.wav ] || [ -f assets/music.aac ]; then
             echo "Found audio file"
@@ -130,16 +134,10 @@ print('Placeholder created.')
           if [ -n "$IMAGE_URL" ]; then
             echo "Downloading image from: $IMAGE_URL"
             curl -L -o assets/storyboard.jpg "$IMAGE_URL"
-            echo "Image downloaded: $(ls -lh assets/storyboard.jpg)"
+            echo "Image downloaded"
           else
             echo "No image URL — creating placeholder"
-            python -c "
-from PIL import Image, ImageDraw
-img = Image.new('RGB', (1920, 1080), color=(15, 15, 20))
-d = ImageDraw.Draw(img)
-d.text((780, 500), 'HOGAN VAPE', fill=(255, 180, 0))
-img.save('assets/storyboard.jpg', quality=95)
-"
+            python /tmp/make_placeholder.py
           fi
 
           if [ -n "$MUSIC_URL" ]; then
@@ -152,11 +150,11 @@ img.save('assets/storyboard.jpg', quality=95)
               AUDIO_FILE="assets/music.mp3"
             fi
             curl -L -o "$AUDIO_FILE" "$MUSIC_URL"
-            echo "Audio downloaded: $(ls -lh $AUDIO_FILE)"
-            ffmpeg -i "$AUDIO_FILE" -ar 44100 -ac 2 assets/music_converted.wav -y 2>/dev/null && \
-              mv assets/music_converted.wav assets/music.wav && \
-              echo "Converted to WAV" || \
-              echo "Conversion skipped"
+            echo "Audio downloaded"
+            ffmpeg -i "$AUDIO_FILE" -ar 44100 -ac 2 assets/music_converted.wav -y 2>/dev/null \
+              && mv assets/music_converted.wav assets/music.wav \
+              && echo "Converted to WAV" \
+              || echo "Conversion skipped"
           else
             echo "No music URL — will render silent"
           fi
@@ -167,7 +165,6 @@ img.save('assets/storyboard.jpg', quality=95)
             if [ -f "$f" ]; then
               echo "Converting $f to clean WAV"
               ffmpeg -i "$f" -ar 44100 -ac 2 -sample_fmt s16 assets/music_final.wav -y 2>&1 | tail -3
-              echo "Converted: $(ls -lh assets/music_final.wav)"
               break
             fi
           done
@@ -179,10 +176,10 @@ img.save('assets/storyboard.jpg', quality=95)
         run: python main.py
         env:
           CI: "true"
-          RESOLUTION:       ${{ github.event.inputs.resolution }}
-          EFFECTS_PRESET:   ${{ github.event.inputs.effects_preset }}
-          SHAKE_INTENSITY:  ${{ github.event.inputs.shake_intensity }}
-          COLOR_GRADE:      ${{ github.event.inputs.color_grade }}
+          RESOLUTION: ${{ github.event.inputs.resolution }}
+          EFFECTS_PRESET: ${{ github.event.inputs.effects_preset }}
+          SHAKE_INTENSITY: ${{ github.event.inputs.shake_intensity }}
+          COLOR_GRADE: ${{ github.event.inputs.color_grade }}
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
