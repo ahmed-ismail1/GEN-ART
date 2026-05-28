@@ -26,17 +26,4 @@ Designed for creators, editors, cinematic intros, gaming edits, trailers, and vi
 * GitHub Actions compatible
 * Highly customizable effect pipeline
 
-## 🛠 Built With
 
-* Python
-* MoviePy
-* OpenCV
-* NumPy
-* Pillow
-* FFmpeg
-
-## 📦 Output
-
-Generates a cinematic MP4 intro video from a single storyboard image.
-
-Hollywood atmosphere directly from Python.
