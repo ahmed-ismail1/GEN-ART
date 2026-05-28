@@ -1,4 +1,4 @@
-```yaml
+
 name: 🎬 Render Cinematic Intro
 
 on:
@@ -269,4 +269,4 @@ EOF
           echo "====================================="
 
           ls -lh output/ || echo "output empty"
-```
+
