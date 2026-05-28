@@ -3,8 +3,12 @@ name: 🎬 Render Cinematic Intro
 on:
   workflow_dispatch:
     inputs:
+
+      # ─────────────────────────────────────
+      # RESOLUTION
+      # ─────────────────────────────────────
       resolution:
-        description: 'Output resolution'
+        description: '📐 Output Resolution'
         required: true
         default: '1080'
         type: choice
@@ -12,12 +16,76 @@ on:
           - '1080'
           - '4K'
 
+      # ─────────────────────────────────────
+      # ASSET SOURCE
+      # ─────────────────────────────────────
+      asset_source:
+        description: '📁 Asset Source — repo_assets OR external_urls'
+        required: true
+        default: 'repo_assets'
+        type: choice
+        options:
+          - 'repo_assets'
+          - 'external_urls'
+
+      image_url:
+        description: '🖼️  Image URL (only if asset_source = external_urls)'
+        required: false
+        default: ''
+        type: string
+
+      music_url:
+        description: '🎵 Music URL (only if asset_source = external_urls — MP3/WAV/AAC)'
+        required: false
+        default: ''
+        type: string
+
+      # ─────────────────────────────────────
+      # EFFECTS PRESET
+      # ─────────────────────────────────────
+      effects_preset:
+        description: '🎨 Effects Preset'
+        required: true
+        default: 'cinematic'
+        type: choice
+        options:
+          - 'cinematic'       # golden + glow + vignette + dof
+          - 'fire'            # particles + lightning + shake قوي
+          - 'noir'            # أبيض وأسود + grain + vignette
+          - 'glitch'          # chromatic aberration + glitch + shake
+          - 'smoke_heavy'     # smoke كتير + dof + golden
+          - 'ultra'           # كل حاجة مع بعض
+
+      # ─────────────────────────────────────
+      # EXTRA CONTROLS
+      # ─────────────────────────────────────
+      shake_intensity:
+        description: '📳 Shake Intensity (0=off, 1=light, 2=medium, 3=heavy)'
+        required: false
+        default: '1'
+        type: choice
+        options: ['0','1','2','3']
+
+      color_grade:
+        description: '🎨 Color Grade'
+        required: false
+        default: 'golden'
+        type: choice
+        options:
+          - 'golden'
+          - 'cold'
+          - 'noir'
+          - 'red_heat'
+          - 'none'
+
+# ─────────────────────────────────────────────
 jobs:
   render:
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
     steps:
+
       - name: 📥 Checkout
         uses: actions/checkout@v4
 
@@ -27,45 +95,135 @@ jobs:
           python-version: '3.11'
           cache: 'pip'
 
-      - name: 📦 Install FFmpeg
+      - name: 📦 Install FFmpeg + libsndfile
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y ffmpeg
+          sudo apt-get install -y ffmpeg libsndfile1 libsndfile1-dev
 
       - name: 📦 Install Python deps
         run: pip install -r requirements.txt
 
-      - name: 📁 Prepare assets
+      - name: 📁 Create folders
+        run: mkdir -p assets output src
+
+      # ─────────────────────────────────────
+      # ASSETS: REPO
+      # ─────────────────────────────────────
+      - name: 🖼️ Use repo assets
+        if: ${{ github.event.inputs.asset_source == 'repo_assets' }}
         run: |
-          mkdir -p assets output src
-          # لو مفيش صورة، اعمل placeholder
-          if [ ! -f assets/storyboard.jpg ]; then
+          if [ -f assets/storyboard.jpg ]; then
+            echo "✅ Found assets/storyboard.jpg"
+          else
+            echo "⚠️ No storyboard.jpg — creating placeholder"
             python -c "
-          from PIL import Image, ImageDraw
-          img = Image.new('RGB', (1920, 1080), color=(20, 20, 20))
-          d = ImageDraw.Draw(img)
-          d.text((860, 520), 'HOGAN VAPE', fill=(255, 200, 0))
-          img.save('assets/storyboard.jpg')
-          print('Placeholder image created.')
+from PIL import Image, ImageDraw
+img = Image.new('RGB', (1920, 1080), color=(15, 15, 20))
+d = ImageDraw.Draw(img)
+d.rectangle([0,0,1920,1080], fill=(15,15,20))
+d.text((780, 500), 'HOGAN VAPE', fill=(255, 180, 0))
+d.text((830, 560), 'CINEMATIC INTRO', fill=(180, 180, 180))
+img.save('assets/storyboard.jpg', quality=95)
+print('Placeholder created.')
+            "
+          fi
+          if [ -f assets/music.mp3 ] || [ -f assets/music.wav ] || [ -f assets/music.aac ]; then
+            echo "✅ Found audio file"
+          else
+            echo "⚠️ No audio found — will render silent"
+          fi
+
+      # ─────────────────────────────────────
+      # ASSETS: EXTERNAL URLs
+      # ─────────────────────────────────────
+      - name: 🌐 Download external assets
+        if: ${{ github.event.inputs.asset_source == 'external_urls' }}
+        run: |
+          IMAGE_URL="${{ github.event.inputs.image_url }}"
+          MUSIC_URL="${{ github.event.inputs.music_url }}"
+
+          if [ -n "$IMAGE_URL" ]; then
+            echo "⬇️ Downloading image from: $IMAGE_URL"
+            curl -L -o assets/storyboard.jpg "$IMAGE_URL"
+            echo "✅ Image downloaded: $(ls -lh assets/storyboard.jpg)"
+          else
+            echo "⚠️ No image URL — creating placeholder"
+            python -c "
+from PIL import Image, ImageDraw
+img = Image.new('RGB', (1920, 1080), color=(15, 15, 20))
+d = ImageDraw.Draw(img)
+d.text((780, 500), 'HOGAN VAPE', fill=(255, 180, 0))
+img.save('assets/storyboard.jpg', quality=95)
             "
           fi
 
+          if [ -n "$MUSIC_URL" ]; then
+            echo "⬇️ Downloading music from: $MUSIC_URL"
+            # حدد الامتداد من الـ URL
+            EXT="${MUSIC_URL##*.}"
+            EXT="${EXT%%\?*}"   # شيل query params لو فيه
+            if [[ "$EXT" =~ ^(mp3|wav|aac|ogg|flac)$ ]]; then
+              AUDIO_FILE="assets/music.$EXT"
+            else
+              AUDIO_FILE="assets/music.mp3"
+            fi
+            curl -L -o "$AUDIO_FILE" "$MUSIC_URL"
+            echo "✅ Audio downloaded: $(ls -lh $AUDIO_FILE)"
+            # حول لـ WAV عشان moviepy يقراه صح
+            ffmpeg -i "$AUDIO_FILE" -ar 44100 -ac 2 assets/music_converted.wav -y 2>/dev/null && \
+              mv assets/music_converted.wav assets/music.wav && \
+              echo "✅ Converted to WAV" || \
+              echo "⚠️ Conversion skipped"
+          else
+            echo "⚠️ No music URL — will render silent"
+          fi
+
+      # ─────────────────────────────────────
+      # FIX AUDIO — حول أي ملف صوت لـ WAV نظيف
+      # ─────────────────────────────────────
+      - name: 🔧 Fix audio encoding
+        run: |
+          for f in assets/music.mp3 assets/music.aac assets/music.ogg assets/music.flac; do
+            if [ -f "$f" ]; then
+              echo "🔄 Converting $f to clean WAV..."
+              ffmpeg -i "$f" -ar 44100 -ac 2 -sample_fmt s16 assets/music_final.wav -y 2>&1 | tail -3
+              echo "✅ Converted: $(ls -lh assets/music_final.wav)"
+              break
+            fi
+          done
+          if [ -f assets/music.wav ] && [ ! -f assets/music_final.wav ]; then
+            ffmpeg -i assets/music.wav -ar 44100 -ac 2 -sample_fmt s16 assets/music_final.wav -y 2>&1 | tail -3
+          fi
+
+      # ─────────────────────────────────────
+      # RENDER
+      # ─────────────────────────────────────
       - name: 🎬 Render video
         run: python main.py
         env:
           CI: "true"
-          RESOLUTION: ${{ github.event.inputs.resolution }}
+          RESOLUTION:       ${{ github.event.inputs.resolution }}
+          EFFECTS_PRESET:   ${{ github.event.inputs.effects_preset }}
+          SHAKE_INTENSITY:  ${{ github.event.inputs.shake_intensity }}
+          COLOR_GRADE:      ${{ github.event.inputs.color_grade }}
 
+      # ─────────────────────────────────────
+      # UPLOAD
+      # ─────────────────────────────────────
       - name: 📤 Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: intro-${{ github.event.inputs.resolution }}-${{ github.run_number }}
+          name: intro-${{ github.event.inputs.resolution }}-${{ github.event.inputs.effects_preset }}-${{ github.run_number }}
           path: output/
           retention-days: 7
 
-      - name: ✅ Done
+      - name: ✅ Summary
         run: |
-          echo "================================"
-          echo "Render complete!"
-          ls -lh output/
-          echo "================================"
+          echo "========================================"
+          echo "  ✅ RENDER COMPLETE"
+          echo "  📐 Resolution : ${{ github.event.inputs.resolution }}"
+          echo "  🎨 Preset     : ${{ github.event.inputs.effects_preset }}"
+          echo "  🎨 Grade      : ${{ github.event.inputs.color_grade }}"
+          echo "  📁 Source     : ${{ github.event.inputs.asset_source }}"
+          echo "========================================"
+          ls -lh output/ 2>/dev/null || echo "output/ is empty"
